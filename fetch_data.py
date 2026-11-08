@@ -15,6 +15,8 @@ import xml.etree.ElementTree as ET
 TICKERS = {  # ticker: naam
     "MSFT": "Microsoft", "GOOGL": "Alphabet", "INTC": "Intel",
     "AAPL": "Apple", "NVDA": "Nvidia", "AMZN": "Amazon", "MCD": "McDonald's",
+    "AMD": "AMD", "AVGO": "Broadcom", "MU": "Micron", "GEV": "GE Vernova",
+    "TSM": "TSMC",  # TSMC meldt niet via Form 4: alleen koersen
 }
 EU = {  # ticker: Yahoo-code; koersen in lokale valuta (VOLO/CIBUS in SEK, NESN in CHF)
     "BESI": "BESI.AS", "VOLO": "VOLO.ST", "KPN": "KPN.AS", "AD": "AD.AS",
@@ -23,7 +25,7 @@ EU = {  # ticker: Yahoo-code; koersen in lokale valuta (VOLO/CIBUS in SEK, NESN 
     "WHA": "WHA.AS", "BN": "BN.PA", "HNR1": "HNR1.DE", "MUV2": "MUV2.DE",
     "NESN": "NESN.SW", "SAN": "SAN.PA", "HO": "HO.PA", "TTE": "TTE.PA",
     "SESG": "SESG.PA", "ETL": "ETL.PA", "CIBUS": "CIBUS.ST", "CONSTI": "CONSTI.HE",
-    "ADYEN": "ADYEN.AS", "ENR": "ENR.DE",
+    "ADYEN": "ADYEN.AS", "ENR": "ENR.DE", "ASM": "ASM.AS", "SU": "SU.PA",
 }
 VANAF = {"VOLO": "2026-06-08"}  # eerdere koersen zijn niet vergelijkbaar (splitsing/emissie)
 DAGEN_EU = 400             # kalenderdagen koershistorie voor de Europese aandelen
