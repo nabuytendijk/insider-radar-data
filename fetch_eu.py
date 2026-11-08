@@ -29,13 +29,17 @@ SE = [("Volati", "VOLO", "Volati", "volati"), ("Cibus", "CIBUS", "Cibus Nordic R
 STATUS = {"VOLO": "Positie", "BESI": "Positie", "CONSTI": "Positie"}
 
 
-def haal(url, tries=3):
+def haal(url, tries=4):
     for i in range(tries):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
                 return r.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as e:
-            if e.code in (429, 503) and i < tries - 1:
+            if e.code in (429, 500, 502, 503) and i < tries - 1:
+                time.sleep(5 * (i + 1)); continue
+            raise
+        except Exception as e:  # verbinding verbroken, time-out, enz.
+            if i < tries - 1:
                 time.sleep(5 * (i + 1)); continue
             raise
     raise RuntimeError("niet gelukt: " + url)
@@ -178,23 +182,47 @@ def fetch_fi(bestaand):
     grens = (dt.date.today() - dt.timedelta(days=400)).isoformat()
     for zoek, ticker, naam, stukje in SE:
         nieuw = gezien = 0
-        for p in range(1, MAX_FI_PAGINAS + 1):
-            url = f"{FI}?SearchFunctionType=Insyn&Utgivare={zoek}&button=search&paging=True&page={p}"
-            rijen = parse_fi(haal(url))
-            if not rijen:
-                break
-            tel = 0
-            for c in rijen:
-                if stukje not in c[1].lower():
-                    continue
-                gezien += 1; tel += 1
-                r = fi_rij(c, ticker, naam)
-                if r and r["datum"] >= grens and r["id"] not in bestaand:
-                    bestaand[r["id"]] = r; nieuw += 1
-            if tel == 0:
-                break
-            time.sleep(0.5)
+        try:
+            for p in range(1, MAX_FI_PAGINAS + 1):
+                url = f"{FI}?SearchFunctionType=Insyn&Utgivare={zoek}&button=search&paging=True&page={p}"
+                rijen = parse_fi(haal(url))
+                if not rijen:
+                    break
+                tel = 0
+                for c in rijen:
+                    if stukje not in c[1].lower():
+                        continue
+                    gezien += 1; tel += 1
+                    r = fi_rij(c, ticker, naam)
+                    if r and r["datum"] >= grens and r["id"] not in bestaand:
+                        bestaand[r["id"]] = r; nieuw += 1
+                if tel == 0:
+                    break
+                time.sleep(1)
+        except Exception as e:
+            print(f"[fi] {naam}: gestopt ({e})", file=sys.stderr)
         print(f"[fi] {naam}: {gezien} meldingen gezien, {nieuw} nieuwe aankopen/verkopen")
+
+
+def markeer_afwijkingen(rijen, koersen):
+    """Zet 'ter controle' bij transacties waarvan de koers meer dan 12% van de beurskoers afwijkt
+    (bijvoorbeeld personeelsaandelen met korting, of een koers in een andere valuta)."""
+    n = 0
+    for r in rijen:
+        serie = koersen.get(r["ticker"])
+        if not serie:
+            continue
+        eerder = [p for d, p in serie if d <= r["datum"]]
+        if not eerder or serie[0][0] > r["datum"]:
+            continue
+        markt = eerder[-1]
+        if markt and abs(r["koers"] / markt - 1) > 0.12:
+            r["controle"] = "ja"
+            tekst = f"koers wijkt af van de beurskoers ({markt:g}); korting of andere valuta?"
+            if tekst not in r.get("toelichting", ""):
+                r["toelichting"] = (r.get("toelichting", "") + "; " if r.get("toelichting") else "") + tekst
+            n += 1
+    return n
 
 
 def proef_afm_filters():
@@ -217,11 +245,11 @@ def main():
             f()
         except Exception as e:
             print(f"[{stap}] mislukt: {e}", file=sys.stderr)
+    koersen = load(os.path.join(OUT, "koersen.json"), {})
+    n = markeer_afwijkingen(bestaand.values(), koersen)
     save(pad, sorted(bestaand.values(), key=lambda r: r["datum"], reverse=True))
     save(vpad, sorted(verwerkt))
-    print(f"totaal in archief: {len(bestaand)} regels")
-    if "--proef" in sys.argv:
-        proef_afm_filters()
+    print(f"totaal in archief: {len(bestaand)} regels, {n} ter controle gemarkeerd")
 
 
 def selftest():
@@ -238,6 +266,10 @@ def selftest():
     x = fi_rij(c, "VOLO", "Volati")
     assert x["type"] == "koop" and x["aantal"] == 1339 and x["koers"] == 22.85 and x["datum"] == "2026-11-06" and x["toelichting"] == "gelieerde persoon", x
     assert fi_rij(c[:5] + ["Subscription"] + c[6:], "VOLO", "Volati") is None
+    rr = [{"ticker": "X", "datum": "2026-02-03", "koers": 60.0, "toelichting": "", "controle": "nee"},
+          {"ticker": "X", "datum": "2026-02-03", "koers": 74.0, "toelichting": "", "controle": "nee"}]
+    n = markeer_afwijkingen(rr, {"X": [["2026-02-01", 75.0], ["2026-02-02", 75.5]]})
+    assert n == 1 and rr[0]["controle"] == "ja" and rr[1]["controle"] == "nee", rr
     print("selftest ok")
 
 
