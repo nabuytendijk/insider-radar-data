@@ -1,42 +1,37 @@
-"""Proefrun 10: SIX Exchange Regulation overview.json - velden en filters (Nestlé)."""
-import json, urllib.request, urllib.parse
+"""Proefrun 11: Nestlé-meldingen uit SIX Exchange Regulation (pagineren en lokaal filteren)."""
+import collections, json, urllib.request
 
 UA = {"User-Agent": "Mozilla/5.0 (insider-radar proef)", "Accept": "application/json"}
 B = "https://www.ser-ag.com/sheldon/management_transactions/v1/"
 
 
 def get(q):
-    with urllib.request.urlopen(urllib.request.Request(B + q, headers=UA), timeout=40) as r:
+    with urllib.request.urlopen(urllib.request.Request(B + q, headers=UA), timeout=60) as r:
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
-print("=== volledig voorbeeld")
-j = get("overview.json?pageSize=2&pageNumber=0")
-print(json.dumps(j["itemList"][0], indent=1, ensure_ascii=False))
-print("sleutels van antwoord:", [k for k in j])
-
-print("=== issuers.json")
-try:
-    iss = get("issuers.json")
-    print(json.dumps(iss, ensure_ascii=False)[:600])
-    lst = iss.get("itemList") or iss.get("issuers") or []
-    for x in lst:
-        if "nestl" in json.dumps(x).lower():
-            print("NESTLE", x)
-except Exception as e:
-    print("FOUT", e)
-
-print("=== filters op Nestlé (ISIN CH0038863350)")
-for q in ["isin=CH0038863350", "ISIN=CH0038863350", "issuerId=NESTLE", "notificationSubmitterId=NESTLE",
-          "notificationSubmitter=Nestl%C3%A9+SA", "issuer=NESTLE", "issuerFilter=NESTLE", "search=Nestle"]:
-    try:
-        j = get("overview.json?pageSize=5&pageNumber=0&" + q)
-        l = j["itemList"]
-        print(q, "-> totaal", j["totalCount"], "|", [(i["notificationSubmitter"], i["transactionDate"], i["buySellIndicator"]) for i in l[:3]])
-    except Exception as e:
-        print(q, "FOUT", e)
-
-print("=== paginering en grootte")
-for q in ["pageSize=100&pageNumber=0", "pageSize=100&pageNumber=1"]:
-    j = get("overview.json?" + q)
-    print(q, len(j["itemList"]), j["itemList"][0]["transactionDate"], j["itemList"][-1]["transactionDate"])
+alle = []
+for p in range(0, 25):
+    l = get(f"overview.json?pageSize=100&pageNumber={p}")["itemList"]
+    if not l:
+        break
+    alle += l
+print("opgehaald:", len(alle), "van", alle[-1]["transactionDate"], "tot", alle[0]["transactionDate"])
+print("codes buySell:", collections.Counter(i["buySellIndicator"] for i in alle))
+print("codes securityType:", collections.Counter(i["securityTypeCode"] for i in alle))
+print("codes functie:", collections.Counter(i["obligorFunctionCode"] for i in alle))
+print("codes related:", collections.Counter(i["obligorRelatedPartyInd"] for i in alle))
+print("namen met 'nestl':", {(i["notificationSubmitter"], i["notificationSubmitterId"], i["ISIN"]) for i in alle if "nestl" in i["notificationSubmitter"].lower()})
+print("=== Nestlé (ISIN CH0038863350)")
+for i in alle:
+    if i["ISIN"] == "CH0038863350":
+        print(json.dumps({k: i[k] for k in ("transactionDate", "buySellIndicator", "securityTypeCode", "securityDescription",
+              "transactionSize", "transactionAmountPerSecurityCHF", "transactionAmountCHF", "obligorFunctionCode",
+              "obligorRelatedPartyInd", "transactionConditions", "notificationId")}, ensure_ascii=False))
+print("=== voorbeeld per securityTypeCode")
+gezien = set()
+for i in alle:
+    c = i["securityTypeCode"]
+    if c not in gezien:
+        gezien.add(c)
+        print(c, i["notificationSubmitter"], i["transactionSize"], i["transactionAmountPerSecurityCHF"], repr(i["securityDescription"]))
