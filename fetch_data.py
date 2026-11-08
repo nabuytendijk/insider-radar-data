@@ -16,6 +16,11 @@ TICKERS = {  # ticker: naam
     "MSFT": "Microsoft", "GOOGL": "Alphabet", "INTC": "Intel",
     "AAPL": "Apple", "NVDA": "Nvidia", "AMZN": "Amazon",
 }
+EU = {  # ticker: (Stooq-code, Yahoo-code); koersen in lokale valuta (VOLO in SEK)
+    "BESI": ("besi.nl", "BESI.AS"), "VOLO": ("volo.se", "VOLO.ST"),
+    "KPN": ("kpn.nl", "KPN.AS"), "AD": ("ad.nl", "AD.AS"),
+}
+DAGEN_EU = 400             # kalenderdagen koershistorie voor de Europese aandelen
 DAGEN_TERUG = 365          # hoe ver terug Form 4-meldingen worden meegenomen
 AV_PAUZE = 15              # seconden tussen Alpha Vantage-verzoeken (gratis limiet is laag)
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -51,7 +56,7 @@ def save(path, obj):
 # ---------- koersen ----------
 def fetch_prices(key):
     pad = os.path.join(OUT, "koersen.json")
-    store = load(pad, {})          # {ticker: {datum: slot}}; groeit dagelijks aan
+    store = {t: {d: c for d, c in v} for t, v in load(pad, {}).items() if t in TICKERS}
     for n, t in enumerate(TICKERS):
         if n:
             time.sleep(AV_PAUZE)
@@ -67,7 +72,62 @@ def fetch_prices(key):
         for datum, v in serie.items():
             d[datum] = float(v["4. close"])
         print(f"[koers] {t}: {len(serie)} dagen opgehaald, {len(d)} in archief")
-    save(pad, {t: sorted(d.items()) for t, d in store.items()})
+    uit = load(pad, {})  # bewaar ook de Europese reeksen die er al staan
+    uit.update({t: sorted(d.items()) for t, d in store.items()})
+    save(pad, uit)
+
+
+# ---------- Europese koersen (zonder sleutel) ----------
+def parse_stooq(tekst, vanaf):
+    """CSV 'Date,Open,High,Low,Close,Volume' -> [(datum, slot)]"""
+    regels = tekst.strip().splitlines()
+    if not regels or not regels[0].lower().startswith("date"):
+        raise ValueError("geen CSV: " + tekst[:80].replace("\n", " "))
+    uit = []
+    for r in regels[1:]:
+        k = r.split(",")
+        if len(k) >= 5 and k[0] >= vanaf:
+            uit.append((k[0], float(k[4])))
+    return uit
+
+
+def parse_yahoo(tekst, vanaf):
+    res = json.loads(tekst)["chart"]["result"][0]
+    sloten = res["indicators"]["quote"][0]["close"]
+    uit = []
+    for ts, c in zip(res["timestamp"], sloten):
+        d = dt.datetime.fromtimestamp(ts, dt.timezone.utc).date().isoformat()
+        if c is not None and d >= vanaf:
+            uit.append((d, round(float(c), 4)))
+    return uit
+
+
+def fetch_eu_prices():
+    pad = os.path.join(OUT, "koersen.json")
+    store = load(pad, {})
+    vanaf = (dt.date.today() - dt.timedelta(days=DAGEN_EU)).isoformat()
+    for t, (stooq, yahoo) in EU.items():
+        punten, bron = [], None
+        try:
+            punten = parse_stooq(get(f"https://stooq.com/q/d/l/?s={stooq}&i=d").decode("utf-8", "replace"), vanaf)
+            bron = "stooq"
+        except Exception as e:
+            print(f"[eu-koers] {t}: Stooq mislukt ({e})", file=sys.stderr)
+        if len(punten) < 5:
+            try:
+                u = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo}?range=2y&interval=1d"
+                punten = parse_yahoo(get(u, {"User-Agent": "Mozilla/5.0"}).decode("utf-8"), vanaf)
+                bron = "yahoo"
+            except Exception as e:
+                print(f"[eu-koers] {t}: Yahoo mislukt ({e})", file=sys.stderr)
+        if len(punten) < 5:
+            print(f"[eu-koers] {t}: geen koersen gevonden", file=sys.stderr); continue
+        d = {x[0]: x[1] for x in store.get(t, [])}
+        d.update(dict(punten))
+        store[t] = sorted(d.items())
+        print(f"[eu-koers] {t}: {len(punten)} dagen via {bron}, {len(store[t])} in archief, laatste {store[t][-1]}")
+        time.sleep(1)
+    save(pad, store)
 
 
 # ---------- Form 4 ----------
@@ -154,6 +214,10 @@ def selftest():
     r = parse_form4(xml, "TEST", "Test", "2026-01-03", "000")
     assert len(r) == 1 and r[0]["type"] == "verkoop" and r[0]["aantal"] == 100 and r[0]["rol"] == "CFO", r
     print("selftest ok:", r[0])
+    assert parse_stooq("Date,Open,High,Low,Close,Volume\n2026-01-02,1,2,0.5,1.5,100\n2025-01-01,1,1,1,9,1", "2026-01-01") == [("2026-01-02", 1.5)]
+    y = '{"chart":{"result":[{"timestamp":[1767312000,1767398400],"indicators":{"quote":[{"close":[10.5,null]}]}}]}}'
+    assert parse_yahoo(y, "2026-01-01") == [("2026-01-02", 10.5)], parse_yahoo(y, "2026-01-01")
+    print("selftest koersen ok")
 
 
 if __name__ == "__main__":
@@ -164,3 +228,4 @@ if __name__ == "__main__":
         sys.exit("Zet ALPHAVANTAGE_KEY en SEC_USER_AGENT als omgevingsvariabelen (GitHub-secrets).")
     fetch_form4(ua)
     fetch_prices(key)
+    fetch_eu_prices()
