@@ -1,0 +1,27 @@
+name: Europese insidermeldingen
+on:
+  schedule:
+    - cron: "0 6 * * 1-5"   # elke werkdag, 06:00 UTC (na de Amerikaanse run van 05:30)
+  workflow_dispatch: {}      # handmatig starten via het tabblad Actions
+
+permissions:
+  contents: write
+
+jobs:
+  ophalen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ophalen
+        run: python fetch_eu.py --proef
+      - name: Opslaan
+        run: |
+          git config user.name "insider-radar"
+          git config user.email "actions@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Europese data bijgewerkt"
+          git pull --rebase
+          git push
