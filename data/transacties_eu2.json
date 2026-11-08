@@ -112,6 +112,22 @@
   "toelichting": "verband met aandelenoptieprogramma"
  },
  {
+  "id": "SU-2026-08-10-amf-D1132999-k",
+  "ticker": "SU",
+  "naam": "Schneider Electric",
+  "status": "Watchlist",
+  "datum": "2026-08-10",
+  "persoon": "François Jackow",
+  "rol": "Administrateur",
+  "type": "koop",
+  "aantal": 250,
+  "koers": 304.2508,
+  "valuta": "EUR",
+  "bron": "AMF (Frankrijk)",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "MUV2-2026-08-07-bf-MariLi-196-k-110820261046",
   "ticker": "MUV2",
   "naam": "Munich Re",
@@ -254,6 +270,22 @@
   "bron": "AMF (Frankrijk)",
   "controle": "nee",
   "toelichting": "verband met aandelenoptieprogramma"
+ },
+ {
+  "id": "SU-2026-05-22-amf-D1116334-v",
+  "ticker": "SU",
+  "naam": "Schneider Electric",
+  "status": "Watchlist",
+  "datum": "2026-05-22",
+  "persoon": "Jean Pascal Tricoire",
+  "rol": "Président du Conseil d'administration",
+  "type": "verkoop",
+  "aantal": 9235,
+  "koers": 270.0,
+  "valuta": "EUR",
+  "bron": "AMF (Frankrijk)",
+  "controle": "nee",
+  "toelichting": ""
  },
  {
   "id": "HO-2026-05-21-amf-D1116246-k",
