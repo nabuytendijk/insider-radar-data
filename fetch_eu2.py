@@ -4,8 +4,8 @@ Schrijft naar data/transacties_eu2.json in hetzelfde formaat als de andere besta
 Gebruik:  python fetch_eu2.py            haalt alles op
           python fetch_eu2.py --selftest test van de lezers, zonder internet
 """
-import html, io, json, os, re, subprocess, sys, time, datetime as dt
-import urllib.parse
+import csv, html, io, json, os, re, subprocess, sys, time, datetime as dt
+import urllib.parse, urllib.request
 from fetch_eu import haal, getal, load, save, markeer_afwijkingen, STATUS, OUT, UA
 import urllib.request
 
@@ -89,7 +89,7 @@ def parse_amf(t, ticker, naam, numero):
         return None
     if not koers or not aantal:
         return None
-    valuta = {"euro": "EUR", "euros": "EUR"}.get(mp.group(2).lower(), mp.group(2).upper())
+    valuta = {"euro": "EUR", "euros": "EUR", "livre": "GBP", "livres": "GBP", "dollar": "USD", "dollars": "USD"}.get(mp.group(2).lower(), mp.group(2).upper())
     mn = re.search(r"PERSONNE ETROITEMENT LIEE\s*:\s*\n?\s*(.+)", t)
     pers, rol = "onbekend", "Bestuur"
     if mn:
@@ -211,12 +211,80 @@ def fetch_consti(bestaand, verwerkt):
     print(f"[consti] {gezien} meldingen gelezen, {nieuw} nieuwe aankopen/verkopen")
 
 
+# ---------- Duitsland (BaFin) ----------
+BAFIN = "https://portal.mvp.bafin.de/database/DealingsInfo/"
+DE = [("DE0008430026", "MUV2", "Munich Re"), ("DE0008402215", "HNR1", "Hannover Rück"), ("DE000ENER6Y0", "ENR", "Siemens Energy")]
+
+
+def de_getal(s):
+    return float(s.replace(".", "").replace(",", "."))
+
+
+def parse_bafin(csv_tekst, ticker, naam):
+    """Leest de CSV-export van de BaFin. Geeft een lijst rijen (alleen echte aankopen en verkopen van aandelen)."""
+    uit = []
+    for r in csv.DictReader(io.StringIO(csv_tekst.lstrip("\ufeff")), delimiter=";"):
+        soort = {"Kauf": "koop", "Verkauf": "verkoop"}.get((r.get("Art des Geschäfts") or "").strip())
+        if not soort or (r.get("Art des Instruments") or "").strip() != "Aktie":
+            continue
+        try:
+            prijs, valuta = (r["Durchschnittspreis"].split() + ["EUR"])[:2]
+            koers = de_getal(prijs)
+            volume = de_getal(r["Aggregiertes Volumen"].split()[0])
+            d, m, j = r["Datum des Geschäfts"].strip().split(".")
+        except (KeyError, ValueError):
+            continue
+        if not koers:
+            continue
+        aantal = int(round(volume / koers))
+        datum = f"{j}-{m}-{d}"
+        naam_p = r["Meldepflichtiger"].strip()
+        if "," in naam_p:
+            a, b = naam_p.split(",", 1)
+            naam_p = f"{b.strip()} {a.strip()}"
+        akt = re.sub(r"\D", "", r.get("Datum der Aktivierung", ""))[:12]
+        uit.append({
+            "id": f"{ticker}-{datum}-bf-{re.sub('[^A-Za-z]', '', naam_p)[:6]}-{aantal}-{'k' if soort == 'koop' else 'v'}-{akt}",
+            "ticker": ticker, "naam": naam, "status": STATUS.get(ticker, "Watchlist"), "datum": datum,
+            "persoon": naam_p, "rol": (r.get("Position / Status") or "").strip() or "Bestuur", "type": soort,
+            "aantal": aantal, "koers": round(koers, 4), "valuta": valuta, "bron": "BaFin (Duitsland)",
+            "controle": "nee", "toelichting": "",
+        })
+    return uit
+
+
+def fetch_bafin(bestaand):
+    grens = (dt.date.today() - dt.timedelta(days=DAGEN)).isoformat()
+    for isin, ticker, naam in DE:
+        op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
+        op.addheaders = list(UA.items())
+        form = {"emittentIsin": isin, "emittentName": "", "meldepflichtigerName": "", "zeitraum": "0",
+                "zeitraumVon": "", "zeitraumBis": "", "emittentButton": "Suche Emittent"}
+        nieuw = gezien = 0
+        try:
+            r = op.open(BAFIN + "sucheForm.do", urllib.parse.urlencode(form).encode(), timeout=60).read().decode("utf-8", "replace")
+            m = re.search(r'href="([^"]*d-\d+-e=1[^"]*6578706f7274=1[^"]*)"', r)
+            if not m:
+                print(f"[bafin] {naam}: geen meldingen gevonden")
+                continue
+            c = op.open(urllib.parse.urljoin(BAFIN + "sucheForm.do", html.unescape(m.group(1))), timeout=60).read().decode("utf-8", "replace")
+            for rij in parse_bafin(c, ticker, naam):
+                gezien += 1
+                if rij["datum"] >= grens and rij["id"] not in bestaand:
+                    bestaand[rij["id"]] = rij; nieuw += 1
+        except Exception as e:
+            print(f"[bafin] {naam}: mislukt ({e})", file=sys.stderr)
+        print(f"[bafin] {naam}: {gezien} aankopen/verkopen gezien, {nieuw} nieuwe")
+        time.sleep(1)
+
+
 def main():
     pad = os.path.join(OUT, "transacties_eu2.json")
     bestaand = {r["id"]: r for r in load(pad, [])}
     vpad = os.path.join(OUT, "eu2_verwerkt.json")
     verwerkt = set(load(vpad, []))
-    for stap, f in (("amf", lambda: fetch_amf(bestaand, verwerkt)), ("consti", lambda: fetch_consti(bestaand, verwerkt))):
+    for stap, f in (("amf", lambda: fetch_amf(bestaand, verwerkt)), ("consti", lambda: fetch_consti(bestaand, verwerkt)),
+                    ("bafin", lambda: fetch_bafin(bestaand))):
         try:
             f()
         except Exception as e:
@@ -255,6 +323,11 @@ TRANSACTION LIEE A L’EXERCICE DE PROGRAMMES D’OPTIONS SUR ACTIONS : NON"""
     x = parse_nasdaq(n, "CONSTI", "Consti")
     assert len(x) == 1 and x[0]["persoon"] == "Risto Kivi" and x[0]["aantal"] == 11500 and x[0]["koers"] == 4.8 and x[0]["type"] == "koop", x
     assert fr_match("SES") == ("SESG", "SES") and fr_match("Sesame") is None and fr_match("DANONE SA")[0] == "BN"
+    cs = ("\ufeffEmittent;Bafin-ID;ISIN;Meldepflichtiger;Position / Status;Art des Instruments;Art des Geschäfts;Durchschnittspreis;Aggregiertes Volumen;Mitteilungsdatum;Datum des Geschäfts;Ort des Geschäfts;Datum der Aktivierung\n"
+          "Munich;1;DE0008430026;Kerner, Michael;Vorstand;Aktie;Sonstiges;597,00 USD;298.500,00 USD;21.08.2026;20.08.2026;;21.08.2026 14:23:45\n"
+          "Munich;1;DE0008430026;Malherbe, Mari-Lizette;Vorstand;Aktie;Kauf;509,00 EUR;99.764,00 EUR;10.08.2026;07.08.2026;XETRA;11.08.2026 10:46:15\n")
+    y = parse_bafin(cs, "MUV2", "Munich Re")
+    assert len(y) == 1 and y[0]["persoon"] == "Mari-Lizette Malherbe" and y[0]["aantal"] == 196 and y[0]["koers"] == 509 and y[0]["datum"] == "2026-08-07" and y[0]["type"] == "koop", y
     print("selftest ok")
 
 
