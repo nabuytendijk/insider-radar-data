@@ -1,16 +1,17 @@
-"""Proefrun 6: AMF-filters, BaFin-detailpagina, Nasdaq managers' transactions."""
-import json, re, urllib.request, urllib.parse, html
+"""Proefrun 7: BaFin detail/export, AMF-lijst + PDF-tekst."""
+import json, re, subprocess, sys, urllib.request, urllib.parse, html
 
 UA = {"User-Agent": "Mozilla/5.0 (insider-radar proef)", "Accept": "*/*"}
 
 
-def get(url, data=None, headers=None):
+def get(url, data=None, headers=None, raw=False):
     h = dict(UA)
     if headers:
         h.update(headers)
     req = urllib.request.Request(url, data=data, headers=h)
     with urllib.request.urlopen(req, timeout=40) as r:
-        return r.status, r.read().decode("utf-8", "replace")
+        b = r.read()
+        return r.status, (b if raw else b.decode("utf-8", "replace"))
 
 
 def kop(t):
@@ -23,72 +24,68 @@ def tekst(h):
     return re.sub(r"\s+", " ", html.unescape(h)).strip()
 
 
-# ---------- 1. AMF ----------
-kop("AMF: sleutels van typesInformation")
-base = "https://bdif.amf-france.org/back/api/v1/informations"
+# ---------- BaFin ----------
+kop("BaFin: detailpagina meldungId=34605")
+B = "https://portal.mvp.bafin.de/database/DealingsInfo/"
 try:
-    s, b = get(base + "?From=0&Size=1")
-    j = json.loads(b)
-    for bk in j["aggregations"]["typesInformation"]["buckets"]:
-        print("TYPE", json.dumps(bk.get("key")), bk.get("docCount"))
+    form = {"emittentIsin": "DE0008430026", "emittentName": "", "meldepflichtigerName": "",
+            "zeitraum": "0", "zeitraumVon": "", "zeitraumBis": "", "emittentButton": "Suche Emittent"}
+    ck = urllib.request.HTTPCookieProcessor()
+    op = urllib.request.build_opener(ck)
+    op.addheaders = list(UA.items())
+    r = op.open(B + "sucheForm.do", urllib.parse.urlencode(form).encode(), timeout=40).read().decode("utf-8", "replace")
+    for l in re.findall(r'(?i)href="([^"]*(?:csv|xml|export)[^"]*)"', r):
+        print("EXPORT", html.unescape(l))
+    d = op.open(B + "ergebnisListe.do?cmd=loadMeldepflichtigeAction&emittentBafinId=40001467&meldungId=34605", timeout=40).read().decode("utf-8", "replace")
+    print("DETAIL", tekst(d)[300:2500])
 except Exception as e:
     print("FOUT", e)
 
-kop("AMF: filter op type")
-for q in ["TypesInformation=DD", "TypesInformation=DIRIGEANT", "TypesInformation=DDD",
-          "TypesInformation=DI", "TypesInformation=FT", "TypesOperation=ACQUISITION",
-          "TypesDocument=DECLARATION_DIRIGEANT"]:
-    try:
-        s, b = get(base + "?" + q + "&From=0&Size=2")
-        j = json.loads(b)
-        print(q, "-> total", j.get("total"))
-        if j.get("total") and "DD" in q or "DIRIG" in q:
-            for it in j["result"][:2]:
-                print("  ITEM", json.dumps(it, ensure_ascii=False)[:1200])
-    except Exception as e:
-        print(q, "FOUT", e)
-
-# ---------- 2. BaFin ----------
-kop("BaFin: ruwe HTML van de eerste resultaatrij + detail")
+# ---------- AMF ----------
+kop("AMF: lijst DD + bedrijven")
+A = "https://bdif.amf-france.org/back/api/v1/"
+items = []
 try:
-    u = "https://portal.mvp.bafin.de/database/DealingsInfo/sucheForm.do"
-    par = urllib.parse.urlencode({"emittentIsin": "DE0008430026", "emittentName": "",
-                                  "meldepflichtigerName": "", "zeitraum": "0",
-                                  "zeitraumVon": "", "zeitraumBis": "",
-                                  "emittentButton": "Suche Emittent"}).encode()
-    s, r = get(u, data=par, headers={"Content-Type": "application/x-www-form-urlencoded"})
-    print("status", s, "len", len(r), "tekst:", tekst(r)[-700:])
-    i = r.find("Kerner")
-    if i < 0:
-        i = r.find("<table")
-    print("RAW", r[max(0, i - 700):i + 900])
-    links = re.findall(r'(?i)href="([^"]*)"', r)
-    for l in links:
-        if re.search(r"(?i)detail|transaktion|geschaeft|Eigen|id=", l):
-            print("LINK", l)
-    for l in re.findall(r'(?i)(?:onclick|href)="[^"]*(?:detail|Detail)[^"]*"', r)[:5]:
-        print("CLICK", l)
+    for frm in range(0, 600, 100):
+        s, b = get(A + "informations?TypesInformation=DD&From=%d&Size=100" % frm)
+        items += json.loads(b)["result"]
+    print("opgehaald:", len(items), "van", items[-1].get("dateInformation"), "tot", items[0].get("dateInformation"))
+    it = items[0]
+    print("SOCIETES", json.dumps(it.get("societes"), ensure_ascii=False)[:600])
+    print("DATA-keys", [k for k in it.keys()])
+    namen = {}
+    for it in items:
+        for so in it.get("societes") or []:
+            namen[so.get("raisonSociale")] = namen.get(so.get("raisonSociale"), 0) + 1
+    zoek = ["danone", "sanofi", "thales", "totalenergies", "ses", "eutelsat", "bnp", "axa"]
+    for n, c in sorted(namen.items(), key=lambda x: -x[1]):
+        if n and any(z in n.lower() for z in zoek):
+            print("BEDRIJF", n, c)
 except Exception as e:
     print("FOUT", e)
 
-# ---------- 3. Nasdaq ----------
-kop("Nasdaq: managers' transactions voor Consti")
-n = "https://api.news.eu.nasdaq.com/news/query.action"
-bas = ("countResults=true&globalGroup=exchangeNotice&displayLanguage=en&timeZone=CET"
-       "&dateMask=yyyy-MM-dd+HH%3Amm%3Ass&limit=50&start=0&dir=DESC&globalName=NordicAllMarkets&callback=cb")
+kop("AMF: PDF van een melding")
 try:
-    for extra in ["&freeText=Consti+Managers", "&freeText=Consti&cnsCategory=Managers%27+Transactions",
-                  "&company=Consti+Oyj", "&freeText=Consti"]:
-        s, r = get(n + "?" + bas + extra, headers={"Referer": "https://www.nasdaq.com/"})
-        j = json.loads(r[r.index("(") + 1:r.rindex(")")])
-        items = j["results"]["item"]
-        mt = [i for i in items if "Managers" in i.get("cnsCategory", "")]
-        print(extra, "-> items", len(items), "managers", len(mt))
-        for i in mt[:4]:
-            print("   ", i["releaseTime"], i["headline"], "|", i["messageUrl"])
-        if mt:
-            s2, v = get(mt[0]["messageUrl"])
-            print("VIEW", s2, len(v), tekst(v)[:900])
-            break
+    pad = None
+    for it in items:
+        for so in it.get("societes") or []:
+            if so.get("raisonSociale") and re.search("danone|sanofi|totalenergies|thales", so["raisonSociale"], re.I):
+                pad = it["documents"][0]["path"]; print("gekozen:", so["raisonSociale"], pad); break
+        if pad: break
+    pad = pad or items[0]["documents"][0]["path"]
+    for u in [A + "documents/" + pad, A + "documents?path=" + urllib.parse.quote(pad),
+              "https://bdif.amf-france.org/back/api/v1/documents/" + urllib.parse.quote(pad, safe="/")]:
+        try:
+            s, b = get(u, raw=True)
+            print(u[:90], s, len(b), b[:8])
+            if b[:4] == b"%PDF":
+                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pypdf"], check=False)
+                import io
+                from pypdf import PdfReader
+                t = "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(b)).pages)
+                print("PDFTEKST", t[:2500])
+                break
+        except Exception as e:
+            print(u[:90], "FOUT", e)
 except Exception as e:
     print("FOUT", e)
