@@ -278,13 +278,70 @@ def fetch_bafin(bestaand):
         time.sleep(1)
 
 
+# ---------- Zwitserland (SIX Exchange Regulation) ----------
+SIX = "https://www.ser-ag.com/sheldon/management_transactions/v1/overview.json"
+CH = {"CH0038863350": ("NESN", "Nestlé")}
+CH_SKIP = re.compile(r"allocation|attribution|grant|award|vesting|exercis|subscription|reinvestment|remuneration|compensation|bonus|dividend|conversion|option", re.I)
+CH_ROL = {"1": "Directielid / uitvoerend", "2": "Bestuurslid (raad van bestuur)"}
+
+
+def ch_rij(i):
+    """Zet een SIX-melding om in een rij. Alleen aandelen (code 7), koop (1) of verkoop (2), geen plantoekenningen."""
+    if i.get("ISIN") not in CH or str(i.get("securityTypeCode")) != "7":
+        return None
+    soort = {"1": "koop", "2": "verkoop"}.get(str(i.get("buySellIndicator")))
+    voorwaarde = (i.get("transactionConditions") or "").strip().replace("\n", " ")
+    if not soort or CH_SKIP.search(voorwaarde):
+        return None
+    aantal, koers = int(round(i.get("transactionSize") or 0)), float(i.get("transactionAmountPerSecurityCHF") or 0)
+    if not aantal or not koers:
+        return None
+    d = str(i["transactionDate"])
+    datum = f"{d[:4]}-{d[4:6]}-{d[6:8]}"
+    tk, naam = CH[i["ISIN"]]
+    opm = []
+    if i.get("obligorRelatedPartyInd"):
+        opm.append("gelieerde persoon")
+    if voorwaarde:
+        opm.append(voorwaarde[:80])
+    return {
+        "id": f"{tk}-{datum}-six-{i['notificationId']}", "ticker": tk, "naam": naam, "status": STATUS.get(tk, "Watchlist"),
+        "datum": datum, "persoon": "Niet gepubliceerd (SIX noemt geen naam)", "rol": CH_ROL.get(str(i.get("obligorFunctionCode")), "Bestuur"),
+        "type": soort, "aantal": aantal, "koers": round(koers, 4), "valuta": "CHF", "bron": "SIX Exchange Regulation",
+        "controle": "nee", "toelichting": "; ".join(opm),
+    }
+
+
+def fetch_six(bestaand):
+    grens = (dt.date.today() - dt.timedelta(days=DAGEN)).strftime("%Y%m%d")
+    gezien = nieuw = 0
+    for p in range(60):
+        j = json.loads(haal(f"{SIX}?pageSize=100&pageNumber={p}"))
+        lijst = j.get("itemList") or []
+        if not lijst:
+            break
+        for i in lijst:
+            if str(i["transactionDate"]) < grens:
+                lijst = None; break
+            r = ch_rij(i)
+            if r:
+                gezien += 1
+                if r["id"] not in bestaand:
+                    bestaand[r["id"]] = r; nieuw += 1
+        if lijst is None:
+            break
+        time.sleep(0.5)
+    print(f"[six] Nestlé: {gezien} aankopen/verkopen gezien, {nieuw} nieuwe")
+
+
 def main():
     pad = os.path.join(OUT, "transacties_eu2.json")
     bestaand = {r["id"]: r for r in load(pad, [])}
     vpad = os.path.join(OUT, "eu2_verwerkt.json")
     verwerkt = set(load(vpad, []))
     for stap, f in (("amf", lambda: fetch_amf(bestaand, verwerkt)), ("consti", lambda: fetch_consti(bestaand, verwerkt)),
-                    ("bafin", lambda: fetch_bafin(bestaand))):
+                    ("bafin", lambda: fetch_bafin(bestaand)),
+                    ("six", lambda: fetch_six(bestaand))):
         try:
             f()
         except Exception as e:
@@ -328,6 +385,13 @@ TRANSACTION LIEE A L’EXERCICE DE PROGRAMMES D’OPTIONS SUR ACTIONS : NON"""
           "Munich;1;DE0008430026;Malherbe, Mari-Lizette;Vorstand;Aktie;Kauf;509,00 EUR;99.764,00 EUR;10.08.2026;07.08.2026;XETRA;11.08.2026 10:46:15\n")
     y = parse_bafin(cs, "MUV2", "Munich Re")
     assert len(y) == 1 and y[0]["persoon"] == "Mari-Lizette Malherbe" and y[0]["aantal"] == 196 and y[0]["koers"] == 509 and y[0]["datum"] == "2026-08-07" and y[0]["type"] == "koop", y
+    i = {"ISIN": "CH0038863350", "securityTypeCode": "7", "buySellIndicator": "1", "transactionSize": 5000.0,
+         "transactionAmountPerSecurityCHF": 78.159246, "transactionDate": 20251208, "obligorFunctionCode": "2",
+         "obligorRelatedPartyInd": "", "transactionConditions": "", "notificationId": "T1PC800057"}
+    c = ch_rij(i)
+    assert c and c["type"] == "koop" and c["aantal"] == 5000 and c["datum"] == "2025-12-08" and c["valuta"] == "CHF", c
+    assert ch_rij(dict(i, transactionConditions="Allocation of shares under employees' dividend reinvestment program")) is None
+    assert ch_rij(dict(i, buySellIndicator="3")) is None and ch_rij(dict(i, ISIN="CH1")) is None
     print("selftest ok")
 
 
