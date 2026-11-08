@@ -18,6 +18,7 @@ DAGEN = 400
 FR = [
     ("danone", "BN", "Danone"), ("sanofi", "SAN", "Sanofi"), ("thales", "HO", "Thales"),
     ("totalenergies", "TTE", "TotalEnergies"), ("eutelsat", "ETL", "Eutelsat"),
+    ("schneider electric", "SU", "Schneider Electric"),
     ("=ses", "SESG", "SES"), ("=ses s.a.", "SESG", "SES"),
 ]
 MAANDEN = {"janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6, "juillet": 7,
