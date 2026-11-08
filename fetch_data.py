@@ -182,8 +182,10 @@ def fetch_form4(ua):
             for v in json.loads(get("https://www.sec.gov/files/company_tickers.json", h)).values()}
     grens = (dt.date.today() - dt.timedelta(days=DAGEN_TERUG)).isoformat()
     pad = os.path.join(OUT, "transacties_us.json")
-    bestaand = {r["id"]: r for r in load(pad, []) if not r.get("persoon", "").startswith("GV 20")}  # oude foutieve GV-regels weg
+    bestaand = {r["id"]: r for r in load(pad, []) if not r.get("persoon", "").startswith("GV 20") and r.get("ticker") != "TSM"}  # oude foutieve GV-regels weg; TSMC heeft geen Form 4
     for t, naam in TICKERS.items():
+        if t == "TSM":
+            continue  # TSMC is buitenlandse emittent: geen Form 4, alleen koersen
         cik = ciks.get(t)
         if not cik:
             print(f"[form4] {t}: CIK niet gevonden", file=sys.stderr); continue
