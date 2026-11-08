@@ -23,6 +23,7 @@ NL = [
     ("asr nederland", "ASRNL", "ASR Nederland"), ("ing groep", "INGA", "ING"), ("philips", "PHIA", "Philips"),
     ("shell", "SHELL", "Shell"), ("sif holding", "SIFG", "Sif Holding"), ("unilever", "UNA", "Unilever"),
     ("wereldhave", "WHA", "Wereldhave"), ("adyen", "ADYEN", "Adyen"),
+    ("asm international", "ASM", "ASM International"),
 ]
 # Zweden: zoekterm bij FI -> (ticker, naam, stukje van de uitgevernaam)
 SE = [("Volati", "VOLO", "Volati", "volati"), ("Cibus", "CIBUS", "Cibus Nordic Real Estate", "cibus")]
