@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Haalt dagkoersen (Alpha Vantage, Yahoo Finance) en insidertransacties (SEC EDGAR Form 4) op.
+"""Haalt dagkoersen (Alpha Vantage) en insidertransacties (SEC EDGAR Form 4) op.
 
 Schrijft naar data/koersen.json en data/transacties_us.json.
 Alleen standaardbibliotheek. Sleutels komen uit omgevingsvariabelen:
@@ -135,10 +135,13 @@ def _txt(el, path):
     return x.text.strip() if x is not None and x.text else None
 
 
-def parse_form4(xml_bytes, ticker, naam, datum_melding, acc):
+def parse_form4(xml_bytes, ticker, naam, datum_melding, acc, cik=None):
     """Geeft rijen voor open-markt aankopen (P) en verkopen (S) in het dashboardformaat."""
     root = ET.fromstring(xml_bytes)
     rij = []
+    uitgever = _txt(root, "issuer/issuerCik")
+    if cik and uitgever and int(uitgever) != int(cik):
+        return []  # melding gaat over een ander bedrijf (bv. een beleggingsfonds van het concern), niet over dit aandeel
     eigenaar = root.find("reportingOwner")
     persoon = _txt(eigenaar, "reportingOwnerId/rptOwnerName") or "onbekend"
     rel = eigenaar.find("reportingOwnerRelationship") if eigenaar is not None else None
@@ -177,7 +180,7 @@ def fetch_form4(ua):
             for v in json.loads(get("https://www.sec.gov/files/company_tickers.json", h)).values()}
     grens = (dt.date.today() - dt.timedelta(days=DAGEN_TERUG)).isoformat()
     pad = os.path.join(OUT, "transacties_us.json")
-    bestaand = {r["id"]: r for r in load(pad, [])}
+    bestaand = {r["id"]: r for r in load(pad, []) if not r.get("persoon", "").startswith("GV 20")}  # oude foutieve GV-regels weg
     for t, naam in TICKERS.items():
         cik = ciks.get(t)
         if not cik:
@@ -193,7 +196,7 @@ def fetch_form4(ua):
             url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accn}/{doc.split('/')[-1]}"
             time.sleep(0.15)  # SEC staat max 10 verzoeken per seconde toe
             try:
-                for r in parse_form4(get(url, h), t, naam, datum, accn):
+                for r in parse_form4(get(url, h), t, naam, datum, accn, cik):
                     bestaand[r["id"]] = r; nieuw += 1
             except Exception as e:
                 print(f"[form4] {t} {acc}: overgeslagen ({e})", file=sys.stderr)
