@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Haalt dagkoersen (Alpha Vantage) en insidertransacties (SEC EDGAR Form 4) op.
+"""Haalt dagkoersen (Alpha Vantage, Yahoo Finance) en insidertransacties (SEC EDGAR Form 4) op.
 
 Schrijft naar data/koersen.json en data/transacties_us.json.
 Alleen standaardbibliotheek. Sleutels komen uit omgevingsvariabelen:
@@ -14,12 +14,18 @@ import xml.etree.ElementTree as ET
 
 TICKERS = {  # ticker: naam
     "MSFT": "Microsoft", "GOOGL": "Alphabet", "INTC": "Intel",
-    "AAPL": "Apple", "NVDA": "Nvidia", "AMZN": "Amazon",
+    "AAPL": "Apple", "NVDA": "Nvidia", "AMZN": "Amazon", "MCD": "McDonald's",
 }
-EU = {  # ticker: (Stooq-code, Yahoo-code); koersen in lokale valuta (VOLO in SEK)
-    "BESI": ("besi.nl", "BESI.AS"), "VOLO": ("volo.se", "VOLO.ST"),
-    "KPN": ("kpn.nl", "KPN.AS"), "AD": ("ad.nl", "AD.AS"),
+EU = {  # ticker: Yahoo-code; koersen in lokale valuta (VOLO/CIBUS in SEK, NESN in CHF)
+    "BESI": "BESI.AS", "VOLO": "VOLO.ST", "KPN": "KPN.AS", "AD": "AD.AS",
+    "ABN": "ABN.AS", "ASML": "ASML.AS", "ASRNL": "ASRNL.AS", "INGA": "INGA.AS",
+    "PHIA": "PHIA.AS", "SHELL": "SHELL.AS", "SIFG": "SIFG.AS", "UNA": "UNA.AS",
+    "WHA": "WHA.AS", "BN": "BN.PA", "HNR1": "HNR1.DE", "MUV2": "MUV2.DE",
+    "NESN": "NESN.SW", "SAN": "SAN.PA", "HO": "HO.PA", "TTE": "TTE.PA",
+    "SESG": "SESG.PA", "ETL": "ETL.PA", "CIBUS": "CIBUS.ST", "CONSTI": "CONSTI.HE",
+    "ADYEN": "ADYEN.AS", "ENR": "ENR.DE",
 }
+VANAF = {"VOLO": "2026-06-08"}  # eerdere koersen zijn niet vergelijkbaar (splitsing/emissie)
 DAGEN_EU = 400             # kalenderdagen koershistorie voor de Europese aandelen
 DAGEN_TERUG = 365          # hoe ver terug Form 4-meldingen worden meegenomen
 AV_PAUZE = 15              # seconden tussen Alpha Vantage-verzoeken (gratis limiet is laag)
@@ -106,26 +112,19 @@ def fetch_eu_prices():
     pad = os.path.join(OUT, "koersen.json")
     store = load(pad, {})
     vanaf = (dt.date.today() - dt.timedelta(days=DAGEN_EU)).isoformat()
-    for t, (stooq, yahoo) in EU.items():
-        punten, bron = [], None
+    for t, yahoo in EU.items():
+        v = max(vanaf, VANAF.get(t, ""))
         try:
-            punten = parse_stooq(get(f"https://stooq.com/q/d/l/?s={stooq}&i=d").decode("utf-8", "replace"), vanaf)
-            bron = "stooq"
+            u = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo}?range=2y&interval=1d"
+            punten = parse_yahoo(get(u, {"User-Agent": "Mozilla/5.0"}).decode("utf-8"), v)
         except Exception as e:
-            print(f"[eu-koers] {t}: Stooq mislukt ({e})", file=sys.stderr)
-        if len(punten) < 5:
-            try:
-                u = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo}?range=2y&interval=1d"
-                punten = parse_yahoo(get(u, {"User-Agent": "Mozilla/5.0"}).decode("utf-8"), vanaf)
-                bron = "yahoo"
-            except Exception as e:
-                print(f"[eu-koers] {t}: Yahoo mislukt ({e})", file=sys.stderr)
+            print(f"[eu-koers] {t}: Yahoo mislukt ({e})", file=sys.stderr); continue
         if len(punten) < 5:
             print(f"[eu-koers] {t}: geen koersen gevonden", file=sys.stderr); continue
-        d = {x[0]: x[1] for x in store.get(t, [])}
+        d = {x[0]: x[1] for x in store.get(t, []) if x[0] >= v}
         d.update(dict(punten))
         store[t] = sorted(d.items())
-        print(f"[eu-koers] {t}: {len(punten)} dagen via {bron}, {len(store[t])} in archief, laatste {store[t][-1]}")
+        print(f"[eu-koers] {t}: {len(punten)} dagen, {len(store[t])} in archief, laatste {store[t][-1]}")
         time.sleep(1)
     save(pad, store)
 
