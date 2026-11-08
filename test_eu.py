@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Proefrun 2: bekijkt hoe de AFM-lijst, AFM-detailpagina's en de Zweedse tabel zijn opgebouwd.
+"""Proefrun 3: zoekt de bouwstenen van de AFM-lijst, AFM-detailpagina en het Zweedse zoekformulier.
 Schrijft alleen uitleg naar het logboek."""
 import re, urllib.request, urllib.error, html
 
@@ -21,56 +21,37 @@ def kaal(s):
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", s))).strip()
 
 
-def rijen(t):
-    uit = []
-    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", t, re.S | re.I):
-        cel = [kaal(c) for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", tr, re.S | re.I)]
-        if cel:
-            uit.append(cel)
-    return uit
-
-
 BASIS = "https://www.afm.nl/nl-nl/sector/registers/meldingenregisters/transacties-leidinggevenden-mar19-"
-print("=== AFM lijstpagina ===")
+print("=== AFM: opbouw van de lijst ===")
 st, t = haal(BASIS)
-print("status", st, "bytes", len(t))
+i = t.find('id="registers_register-paged-list_div"')
+print("lijstblok:", re.sub(r"\s+", " ", t[i:i + 900]))
+j = t.find("details?id=")
+print()
+print("eerste lijstregel (HTML):", re.sub(r"\s+", " ", t[max(0, j - 500): j + 700]))
+print()
+print("scripts:", re.findall(r'<script[^>]+src="([^"]+)"', t)[:15])
+for m in re.finditer(r"(?i)(/api/|ajax|handler|\.ashx|fetch\(|data-url|data-endpoint)", t):
+    print("hint:", re.sub(r"\s+", " ", t[max(0, m.start() - 100): m.end() + 200])[:300])
+
+print()
+print("=== AFM: detailpagina ===")
 ids = re.findall(r"details\?id=([0-9A-Za-z\-]+)", t)
-print("aantal detaillinks:", len(ids), "eerste:", ids[:3])
-print("formuliervelden:", sorted(set(re.findall(r'name="([^"]+)"', t)))[:40])
-for m in re.finditer(r"(?i)(pageindex|page=|__doPostBack|data-page|paging|pagina)", t):
-    print("pagineringshint:", kaal(t[max(0, m.start() - 80): m.end() + 120])[:200])
-    break
-print("pagineringslinks:", re.findall(r'href="([^"]*[?&;](?:page|pagina|p)=[^"]*)"', t, re.I)[:5])
-for r in rijen(t)[:4]:
-    print("rij:", r)
+st3, t3 = haal(BASIS + "/details?id=" + ids[0])
+k = t3.find("Soort transactie")
+if k < 0:
+    k = t3.find("Meldingsplichtige")
+print("zoekpositie:", k)
+print("blok:", re.sub(r"\s+", " ", t3[max(0, k - 1500): k + 2500]))
 
 print()
-print("=== AFM andere pagina's / zoekterm proberen ===")
-for naam, q in [("page=2", "?page=2"), ("pagina=2", "?pagina=2"), ("p=2", "?p=2"),
-                ("zoekterm", "?zoekterm=BE+Semiconductor"), ("searchTerm", "?searchTerm=BE+Semiconductor"),
-                ("datum", "?datumvan=2026-10-01&datumtot=2026-11-08")]:
-    st2, t2 = haal(BASIS + q)
-    ids2 = re.findall(r"details\?id=([0-9A-Za-z\-]+)", t2)
-    r2 = rijen(t2)
-    print(f"{naam}: status {st2}, detaillinks {len(ids2)}, eerste id {ids2[:1]}, eerste rij {r2[1] if len(r2) > 1 else None}")
-
-print()
-print("=== AFM detailpagina (eerste melding) ===")
-if ids:
-    st3, t3 = haal(BASIS + "/details?id=" + ids[0])
-    print("status", st3)
-    print(kaal(t3)[:1500])
-
-print()
-print("=== Zweden: tabel en paginering ===")
-S = "https://marknadssok.fi.se/publiceringsklient/en-GB/Search?SearchFunctionType=Insyn&Utgivare=Volati"
+print("=== Zweden: formulier ===")
+S = "https://marknadssok.fi.se/publiceringsklient/en-GB/Search?SearchFunctionType=Insyn"
 st4, t4 = haal(S)
-print("status", st4)
-tab = rijen(t4)
-print("rijen in tabel:", len(tab))
-for r in tab[:4]:
-    print("rij:", r)
-print("links met page:", re.findall(r'href="([^"]*(?:[?&;]page|Page)[^"]*)"', t4)[:6])
-st5, t5 = haal(S + "&Page=2")
-tab5 = rijen(t5)
-print("Page=2: rijen", len(tab5), "eerste", tab5[1] if len(tab5) > 1 else None)
+print("formulier:", re.findall(r'<form[^>]*>', t4)[:3])
+print("invoervelden:", re.findall(r'<(?:input|select)[^>]*name="([^"]+)"', t4))
+for naam in ("Utgivare", "Issuer", "issuer", "utgivare", "IssuerName"):
+    st5, t5 = haal(S + "&button=search&" + naam + "=Volati")
+    kolom = re.findall(r"<td[^>]*>(.*?)</td>", t5, re.S)
+    uitgevers = sorted(set(kaal(c) for n, c in enumerate(kolom) if n % 16 == 1))
+    print(f"{naam}: status {st5}, uitgevers in resultaat: {uitgevers[:6]}")
