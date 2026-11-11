@@ -1,5 +1,21 @@
 [
  {
+  "id": "VOLO-2026-11-11-fi-Magnus-250000-k",
+  "ticker": "VOLO",
+  "naam": "Volati",
+  "status": "Positie",
+  "datum": "2026-11-11",
+  "persoon": "Magnus Sundström",
+  "rol": "Member of the Board of Directors",
+  "type": "koop",
+  "aantal": 250000,
+  "koers": 22.3,
+  "valuta": "SEK",
+  "bron": "Finansinspektionen",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "CIBUS-2026-11-05-fi-AnnSo-4550-k",
   "ticker": "CIBUS",
   "naam": "Cibus Nordic Real Estate",
