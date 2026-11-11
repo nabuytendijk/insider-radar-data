@@ -1,5 +1,37 @@
 [
  {
+  "id": "MSFT-2026-11-09-000078901926000232-0",
+  "ticker": "MSFT",
+  "naam": "Microsoft",
+  "status": "Watchlist",
+  "datum": "2026-11-09",
+  "persoon": "Hood Amy",
+  "rol": "EVP, Chief Financial Officer",
+  "type": "verkoop",
+  "aantal": 5912,
+  "koers": 544.2359,
+  "valuta": "USD",
+  "bron": "SEC EDGAR Form 4",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
+  "id": "MSFT-2026-11-09-000078901926000232-1",
+  "ticker": "MSFT",
+  "naam": "Microsoft",
+  "status": "Watchlist",
+  "datum": "2026-11-09",
+  "persoon": "Hood Amy",
+  "rol": "EVP, Chief Financial Officer",
+  "type": "verkoop",
+  "aantal": 1393,
+  "koers": 544.9467,
+  "valuta": "USD",
+  "bron": "SEC EDGAR Form 4",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "AAPL-2026-11-03-000114036126042149-0",
   "ticker": "AAPL",
   "naam": "Apple",
