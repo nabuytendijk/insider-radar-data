@@ -17,14 +17,17 @@ TICKERS = {  # ticker: naam
     "AAPL": "Apple", "NVDA": "Nvidia", "AMZN": "Amazon", "MCD": "McDonald's",
     "AMD": "AMD", "AVGO": "Broadcom", "MU": "Micron", "GEV": "GE Vernova",
     "TSM": "TSMC",  # TSMC meldt niet via Form 4: alleen koersen
+    "WPM": "Wheaton Precious Metals", "NEM": "Newmont", "AEM": "Agnico Eagle Mines",
+    "PAAS": "Pan American Silver", "EMR": "Emerson Electric", "CEG": "Constellation Energy",
+    "VST": "Vistra", "UBER": "Uber",
 }
-EU = {  # ticker: Yahoo-code; koersen in lokale valuta (VOLO/CIBUS in SEK, NESN in CHF)
+EU = {  # ticker: Yahoo-code; koersen in lokale valuta (VOLO in SEK, NESN in CHF)
     "BESI": "BESI.AS", "VOLO": "VOLO.ST", "KPN": "KPN.AS", "AD": "AD.AS",
     "ABN": "ABN.AS", "ASML": "ASML.AS", "ASRNL": "ASRNL.AS", "INGA": "INGA.AS",
     "PHIA": "PHIA.AS", "SHELL": "SHELL.AS", "SIFG": "SIFG.AS", "UNA": "UNA.AS",
     "WHA": "WHA.AS", "BN": "BN.PA", "HNR1": "HNR1.DE", "MUV2": "MUV2.DE",
     "NESN": "NESN.SW", "SAN": "SAN.PA", "HO": "HO.PA", "TTE": "TTE.PA",
-    "SESG": "SESG.PA", "ETL": "ETL.PA", "CIBUS": "CIBUS.ST", "CONSTI": "CONSTI.HE",
+    "SESG": "SESG.PA", "ETL": "ETL.PA", "CONSTI": "CONSTI.HE",
     "ADYEN": "ADYEN.AS", "ENR": "ENR.DE", "ASM": "ASM.AS", "SU": "SU.PA",
 }
 VANAF = {"VOLO": "2026-06-08"}  # eerdere koersen zijn niet vergelijkbaar (splitsing/emissie)
@@ -112,7 +115,7 @@ def parse_yahoo(tekst, vanaf):
 
 def fetch_eu_prices():
     pad = os.path.join(OUT, "koersen.json")
-    store = load(pad, {})
+    store = {t: v for t, v in load(pad, {}).items() if t in TICKERS or t in EU}  # niet meer gevolgde reeksen (zoals CIBUS) vallen weg
     vanaf = (dt.date.today() - dt.timedelta(days=DAGEN_EU)).isoformat()
     for t, yahoo in EU.items():
         v = max(vanaf, VANAF.get(t, ""))
