@@ -1,33 +1,51 @@
 #!/usr/bin/env python3
 """Haalt insidertransacties op uit de officiële Europese registers (alleen standaardbibliotheek).
 
-Nederland: AFM-register (de 50 nieuwste meldingen + detailpagina's)
-Zweden:    Finansinspektionen (Volati, Cibus Nordic; met paginering)
+Nederland: twee AFM-registers, elk via de volledige XML-export (een jaar historie) + detailpagina's:
+           - Transacties leidinggevenden MAR 19 (o.a. BESI, Shell, Unilever, ASM, ASR, ING)
+           - Bestuurders en commissarissen art. 5:48 Wft (o.a. Ahold, ASML, KPN, Philips, ABN Amro, Adyen)
+Zweden:    Finansinspektionen (Volati; met paginering)
 Schrijft naar data/transacties_eu.json in hetzelfde formaat als de Amerikaanse gegevens.
 Gebruik:  python fetch_eu.py             haalt alles op
           python fetch_eu.py --selftest  test van de lezers, zonder internet
 """
 import html, json, os, re, sys, time, datetime as dt
 import urllib.request, urllib.error
+import xml.etree.ElementTree as ET
 
 UA = {"User-Agent": "Mozilla/5.0 (insider-radar)"}
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 AFM = "https://www.afm.nl/nl-nl/sector/registers/meldingenregisters/transacties-leidinggevenden-mar19-"
+AFM_BC = "https://www.afm.nl/nl-nl/sector/registers/meldingenregisters/bestuurders-commissarissen"
+EXPORT = "https://www.afm.nl/export.aspx?format=xml&type="
+EXPORT_MAR = "0ee836dc-5520-459d-bcf4-a4a689de6614"
+EXPORT_BC = "1b934036-12ad-4950-9773-31361d5adbd9"
+DAGEN_NL = 400           # hoe ver terug de AFM-registers worden gelezen
 FI = "https://marknadssok.fi.se/Publiceringsklient/en-GB/Search/Search"
 MAX_FI_PAGINAS = 8       # 10 rijen per pagina
 
-# AFM: stukje van de naam van de uitgever (kleine letters) -> (ticker, naam)
-NL = [
-    ("semiconductor", "BESI", "BE Semiconductor"), ("kpn", "KPN", "KPN"), ("ahold", "AD", "Ahold Delhaize"),
-    ("asml", "ASML", "ASML"), ("abn amro", "ABN", "ABN Amro"), ("a.s.r.", "ASRNL", "ASR Nederland"),
-    ("asr nederland", "ASRNL", "ASR Nederland"), ("ing groep", "INGA", "ING"), ("philips", "PHIA", "Philips"),
-    ("shell", "SHELL", "Shell"), ("sif holding", "SIFG", "Sif Holding"), ("unilever", "UNA", "Unilever"),
-    ("wereldhave", "WHA", "Wereldhave"), ("adyen", "ADYEN", "Adyen"),
-    ("asm international", "ASM", "ASM International"),
-]
+# AFM: exacte naam van de uitgever zoals in de registers (kleine letters) -> (ticker, naam)
+# Vastgesteld met proefrun 13 (13 nov 2026); beide registers gebruiken dezelfde schrijfwijze.
+NL = {
+    "be semiconductor industries n.v.": ("BESI", "BE Semiconductor"),
+    "koninklijke kpn n.v.": ("KPN", "KPN"),
+    "koninklijke ahold delhaize n.v.": ("AD", "Ahold Delhaize"),
+    "asml holding n.v.": ("ASML", "ASML"),
+    "abn amro bank nv": ("ABN", "ABN Amro"),
+    "asr nederland n.v.": ("ASRNL", "ASR Nederland"),
+    "ing groep n.v.": ("INGA", "ING"),
+    "koninklijke philips n.v.": ("PHIA", "Philips"),
+    "shell plc": ("SHELL", "Shell"),
+    "sif holding n.v.": ("SIFG", "Sif Holding"),
+    "unilever plc": ("UNA", "Unilever"),
+    "wereldhave n.v.": ("WHA", "Wereldhave"),
+    "adyen n.v.": ("ADYEN", "Adyen"),
+    "asm international n.v.": ("ASM", "ASM International"),
+}
 # Zweden: zoekterm bij FI -> (ticker, naam, stukje van de uitgevernaam)
-SE = [("Volati", "VOLO", "Volati", "volati"), ("Cibus", "CIBUS", "Cibus Nordic Real Estate", "cibus")]
-STATUS = {"VOLO": "Positie", "BESI": "Positie", "CONSTI": "Positie"}
+SE = [("Volati", "VOLO", "Volati", "volati")]
+WEG = {"CIBUS"}          # niet meer gevolgd: bestaande regels worden opgeruimd
+STATUS = {"WHA": "Positie", "CONSTI": "Positie"}
 
 
 def haal(url, tries=4):
@@ -44,6 +62,17 @@ def haal(url, tries=4):
                 time.sleep(5 * (i + 1)); continue
             raise
     raise RuntimeError("niet gelukt: " + url)
+
+
+def haal_bytes(url, tries=4):
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=180) as r:
+                return r.read()
+        except Exception:
+            if i < tries - 1:
+                time.sleep(5 * (i + 1)); continue
+            raise
 
 
 def kaal(s):
@@ -123,26 +152,133 @@ def afm_rijen(lijstrij, ticker, naam, functie, regels):
     return uit
 
 
+def afm_export(typ):
+    """Volledige XML-export van een AFM-register -> lijst van dicts per vermelding."""
+    root = ET.fromstring(haal_bytes(EXPORT + typ))
+    return [{c.tag: (c.text or "").strip() for c in x} for x in root]
+
+
 def fetch_afm(bestaand, verwerkt):
-    lijst = parse_afm_lijst(haal(AFM))
-    print(f"[afm] {len(lijst)} meldingen op de lijst")
-    nieuw = relevant = 0
-    for r in lijst:
-        low = r["uitgever"].lower()
-        hit = next((x for x in NL if x[0] in low), None)
-        if not hit or r["id"] in verwerkt:
+    """MAR 19: alle meldingen van onze uitgevers uit het afgelopen jaar, via de XML-export."""
+    grens = (dt.date.today() - dt.timedelta(days=DAGEN_NL)).strftime("%Y%m%d")
+    lijst = []
+    for v in afm_export(EXPORT_MAR):
+        hit = NL.get(v.get("uitgevendeinstelling", "").lower())
+        mid = v.get("meldingid", "")
+        if hit and mid[:8] >= grens:
+            lijst.append(({"id": mid, "datum": mid[:8], "uitgever": v["uitgevendeinstelling"],
+                           "persoon": v.get("meldingsplichtige", "")}, hit))
+    print(f"[afm] MAR 19: {len(lijst)} meldingen van jouw aandelen sinds {grens}")
+    nieuw = bekeken = 0
+    for r, hit in lijst:
+        if r["id"] in verwerkt:
             continue
-        relevant += 1
+        bekeken += 1
         time.sleep(0.5)
         try:
             functie, regels = parse_afm_detail(haal(f"{AFM}/details?id={r['id']}"))
-            for rij in afm_rijen(r, hit[1], hit[2], functie, regels):
-                if rij["id"] not in bestaand:
+            for rij in afm_rijen(r, hit[0], hit[1], functie, regels):
+                if rij["id"] not in bestaand and not dubbel(bestaand, rij):
                     bestaand[rij["id"]] = rij; nieuw += 1
             verwerkt.add(r["id"])
         except Exception as e:
             print(f"[afm] {r['uitgever']} {r['id']}: overgeslagen ({e})", file=sys.stderr)
-    print(f"[afm] {relevant} meldingen van jouw aandelen bekeken, {nieuw} nieuwe aankopen/verkopen")
+    print(f"[afm] MAR 19: {bekeken} nieuwe meldingen bekeken, {nieuw} nieuwe aankopen/verkopen")
+
+
+# ---------- AFM: bestuurders en commissarissen (art. 5:48 Wft) ----------
+BC_RIJ = re.compile(r"Soort effect (?P<soort>.*?) Uitgevende instelling (?P<uitg>.*?) Aantal effecten (?P<aantal>[\d.,]+)"
+                    r"(?: Valuta (?P<valuta>[A-Z]{3}))?(?: Waarde per aandeel (?P<waarde>[\d.,]+))?(?: Aantal stemmen)")
+
+
+def parse_bc_detail(t):
+    """Geeft {"Voorposities": [...], "Wijzigingen": [...], "Naposities": [...]}; ontbrekende blokken zijn leeg.
+    Elke regel: dict met soort, aantal, valuta, waarde."""
+    uit = {"Voorposities": [], "Wijzigingen": [], "Naposities": []}
+    koppen = [(m.start(), kaal(m.group(1))) for m in re.finditer(r"<h[1-4][^>]*>(.*?)</h[1-4]>", t, re.S)]
+    for n, (pos, kop) in enumerate(koppen):
+        if kop not in uit:
+            continue
+        einde = koppen[n + 1][0] if n + 1 < len(koppen) else len(t)
+        tabel = re.search(r"<table.*?</table>", t[pos:einde], re.S)
+        if not tabel:
+            continue
+        for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", tabel.group(0), re.S):
+            m = BC_RIJ.search(kaal(tr))
+            if m:
+                uit[kop].append({"soort": m["soort"].strip(), "aantal": getal(m["aantal"]),
+                                 "valuta": m["valuta"] or "EUR", "waarde": getal(m["waarde"]) if m["waarde"] else 0.0})
+    return uit
+
+
+def bc_rijen(melding, ticker, naam, blokken):
+    """Alleen gewone aandelen met een waarde per aandeel. Het register vermeldt geen soort transactie:
+    koop of verkoop volgt uit het verschil tussen de positie voor en na de melding."""
+    gewoon = lambda r: "gewoon aandeel" in r["soort"].lower() or "certificaat" in r["soort"].lower()
+    voor = sum(r["aantal"] for r in blokken["Voorposities"] if gewoon(r))
+    na = sum(r["aantal"] for r in blokken["Naposities"] if gewoon(r))
+    netto = na - voor
+    wijz = [r for r in blokken["Wijzigingen"] if gewoon(r) and r["waarde"] > 0 and r["aantal"] > 0]
+    if not wijz or netto == 0:
+        return []
+    ander = any(not gewoon(r) for r in blokken["Wijzigingen"])
+    d = dt.datetime.strptime(melding["DatumMeldingsplicht"], "%m/%d/%Y").date().isoformat()
+    opm = ["AFM 5:48: soort transactie niet vermeld, koop/verkoop afgeleid uit positie voor en na"]
+    if ander:
+        opm.append("in dezelfde melding ook toegekende of voorwaardelijke aandelen; mogelijk uitoefening of vesting")
+    if abs(sum(r["aantal"] for r in wijz) - abs(netto)) > 0.5:
+        opm.append(f"som van de wijzigingen wijkt af van het positieverschil ({netto:+,.0f})")
+    uit = []
+    for i, r in enumerate(wijz):
+        uit.append({
+            "id": f"{ticker}-{d}-bc{melding['meldingid']}-{i}", "ticker": ticker, "naam": naam,
+            "status": STATUS.get(ticker, "Watchlist"), "datum": d, "persoon": melding.get("Meldingsplichtige", ""),
+            "rol": "Bestuurder of commissaris", "type": "koop" if netto > 0 else "verkoop",
+            "aantal": int(round(r["aantal"])), "koers": round(r["waarde"], 4), "valuta": r["valuta"],
+            "bron": "AFM-register (5:48)", "controle": "ja" if ander or len(opm) > 2 else "nee",
+            "toelichting": "; ".join(opm),
+        })
+    return uit
+
+
+def fetch_afm_bc(bestaand, verwerkt):
+    grens = dt.date.today() - dt.timedelta(days=DAGEN_NL)
+    lijst = []
+    for v in afm_export(EXPORT_BC):
+        hit = NL.get(v.get("UitgevendeInstelling", "").lower())
+        try:
+            d = dt.datetime.strptime(v.get("DatumMeldingsplicht", ""), "%m/%d/%Y").date()
+        except ValueError:
+            continue
+        if hit and d >= grens:
+            lijst.append((v, hit))
+    print(f"[afm-bc] 5:48: {len(lijst)} meldingen van jouw aandelen sinds {grens}")
+    nieuw = bekeken = 0
+    for v, hit in lijst:
+        sleutel = "bc" + v["meldingid"]
+        if sleutel in verwerkt:
+            continue
+        bekeken += 1
+        time.sleep(0.5)
+        try:
+            for rij in bc_rijen(v, hit[0], hit[1], parse_bc_detail(haal(f"{AFM_BC}/details?id={v['meldingid']}"))):
+                if rij["id"] not in bestaand and not dubbel(bestaand, rij):
+                    bestaand[rij["id"]] = rij; nieuw += 1
+            verwerkt.add(sleutel)
+        except Exception as e:
+            print(f"[afm-bc] {v.get('UitgevendeInstelling')} {v['meldingid']}: overgeslagen ({e})", file=sys.stderr)
+    print(f"[afm-bc] 5:48: {bekeken} nieuwe meldingen bekeken, {nieuw} nieuwe aankopen/verkopen")
+
+
+def dubbel(bestaand, rij):
+    """Dezelfde transactie kan in beide AFM-registers staan: zelfde aandeel, datum, soort en aantal."""
+    delen = [w.strip(",.").lower() for w in rij["persoon"].split() if len(w.strip(",.")) > 2]
+    a = max(delen, key=len) if delen else ""  # achternaam: het langste woord, geen voorletters
+    for r in bestaand.values():
+        if (r["ticker"], r["datum"], r["type"], r["aantal"]) == (rij["ticker"], rij["datum"], rij["type"], rij["aantal"]) \
+                and r.get("bron", "").startswith("AFM") and a and a in r.get("persoon", "").lower():
+            return True
+    return False
 
 
 # ---------- Finansinspektionen ----------
@@ -226,22 +362,13 @@ def markeer_afwijkingen(rijen, koersen):
     return n
 
 
-def proef_afm_filters():
-    """Eenmalig: kijkt of de AFM-lijst een datum- of zoekfilter via de webadresregel accepteert."""
-    for q in ("?date-from=2026-01-01&date-till=2026-01-31", "?inputKeywords=semiconductor"):
-        try:
-            l = parse_afm_lijst(haal(AFM + q))
-            print(f"[afm-proef] {q}: {len(l)} rijen, eerste: {l[0]['datum'] + ' ' + l[0]['uitgever'] if l else None}")
-        except Exception as e:
-            print(f"[afm-proef] {q}: mislukt ({e})")
-
-
 def main():
     pad = os.path.join(OUT, "transacties_eu.json")
-    bestaand = {r["id"]: r for r in load(pad, [])}
+    bestaand = {r["id"]: r for r in load(pad, []) if r.get("ticker") not in WEG}
     vpad = os.path.join(OUT, "eu_verwerkt.json")
     verwerkt = set(load(vpad, []))
-    for stap, f in (("afm", lambda: fetch_afm(bestaand, verwerkt)), ("fi", lambda: fetch_fi(bestaand))):
+    for stap, f in (("afm", lambda: fetch_afm(bestaand, verwerkt)), ("afm-bc", lambda: fetch_afm_bc(bestaand, verwerkt)),
+                    ("fi", lambda: fetch_fi(bestaand))):
         try:
             f()
         except Exception as e:
@@ -271,6 +398,23 @@ def selftest():
           {"ticker": "X", "datum": "2026-02-03", "koers": 74.0, "toelichting": "", "controle": "nee"}]
     n = markeer_afwijkingen(rr, {"X": [["2026-02-01", 75.0], ["2026-02-02", 75.5]]})
     assert n == 1 and rr[0]["controle"] == "ja" and rr[1]["controle"] == "nee", rr
+    bc = """<h1>W. Test - Koninklijke KPN N.V. - Rotterdam</h1>
+    <h2>Voorposities</h2><table><tr><th>Soort effect</th></tr>
+    <tr><td><span class="cc-mobile-title">Soort effect</span>Gewoon aandeel</td><td><span class="cc-mobile-title">Uitgevende instelling</span>Koninklijke KPN N.V.</td><td><span class="cc-mobile-title">Aantal effecten</span>1.000,00</td><td><span class="cc-mobile-title">Aantal stemmen</span>1.000,00</td></tr></table>
+    <h2>Wijzigingen</h2><table><tr><th>Soort effect</th></tr>
+    <tr><td><span class="cc-mobile-title">Soort effect</span>Gewoon aandeel</td><td><span class="cc-mobile-title">Uitgevende instelling</span>Koninklijke KPN N.V.</td><td><span class="cc-mobile-title">Aantal effecten</span>400,00</td><td><span class="cc-mobile-title">Valuta</span>EUR</td><td><span class="cc-mobile-title">Waarde per aandeel</span>4,43</td><td><span class="cc-mobile-title">Aantal stemmen</span>400,00</td><td><span class="cc-mobile-title">Vrije hand beheer</span>Nee</td></tr></table>
+    <h2>Naposities</h2><table><tr><th>Soort effect</th></tr>
+    <tr><td><span class="cc-mobile-title">Soort effect</span>Gewoon aandeel</td><td><span class="cc-mobile-title">Uitgevende instelling</span>Koninklijke KPN N.V.</td><td><span class="cc-mobile-title">Aantal effecten</span>600,00</td><td><span class="cc-mobile-title">Aantal stemmen</span>600,00</td></tr></table>
+    <h3>Er zijn fouten in uw formulier:</h3>"""
+    b = parse_bc_detail(bc)
+    m = {"meldingid": "999", "DatumMeldingsplicht": "10/31/2026", "Meldingsplichtige": "W. Test"}
+    x = bc_rijen(m, "KPN", "KPN", b)
+    assert len(x) == 1 and x[0]["type"] == "verkoop" and x[0]["aantal"] == 400 and x[0]["koers"] == 4.43 and x[0]["datum"] == "2026-10-31" and x[0]["controle"] == "nee", x
+    award = bc.replace("Gewoon aandeel", "Performance award share").replace("4,43", "0,00")
+    assert bc_rijen(m, "KPN", "KPN", parse_bc_detail(award)) == [], "toekenning zonder waarde moet wegvallen"
+    zonder_voor = re.sub(r"<h2>Voorposities</h2>.*?</table>", "", bc, flags=re.S)
+    y = bc_rijen(m, "KPN", "KPN", parse_bc_detail(zonder_voor))
+    assert len(y) == 1 and y[0]["type"] == "koop", y
     print("selftest ok")
 
 
