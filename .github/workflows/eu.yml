@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
       - name: Ophalen
         run: |
-          python fetch_eu.py --proef
+          python fetch_eu.py
           python fetch_eu2.py
       - name: Opslaan
         run: |
