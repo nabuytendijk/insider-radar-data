@@ -16,6 +16,22 @@
   "toelichting": ""
  },
  {
+  "id": "AMD-2026-11-11-000000248826000193-0",
+  "ticker": "AMD",
+  "naam": "AMD",
+  "status": "Watchlist",
+  "datum": "2026-11-11",
+  "persoon": "Denzel Nora",
+  "rol": "Bestuurder / commissaris",
+  "type": "verkoop",
+  "aantal": 9000,
+  "koers": 564.88,
+  "valuta": "USD",
+  "bron": "SEC EDGAR Form 4",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "MSFT-2026-11-10-000078901926000234-0",
   "ticker": "MSFT",
   "naam": "Microsoft",
