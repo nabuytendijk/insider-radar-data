@@ -1,5 +1,37 @@
 [
  {
+  "id": "MUV2-2026-11-13-bf-Andrew-10-k-171120261602",
+  "ticker": "MUV2",
+  "naam": "Munich Re",
+  "status": "Watchlist",
+  "datum": "2026-11-13",
+  "persoon": "Andrew Buchanan",
+  "rol": "Vorstand",
+  "type": "koop",
+  "aantal": 10,
+  "koers": 592.4,
+  "valuta": "EUR",
+  "bron": "BaFin (Duitsland)",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
+  "id": "MUV2-2026-11-13-bf-Andrew-200-k-171120261602",
+  "ticker": "MUV2",
+  "naam": "Munich Re",
+  "status": "Watchlist",
+  "datum": "2026-11-13",
+  "persoon": "Andrew Buchanan",
+  "rol": "Vorstand",
+  "type": "koop",
+  "aantal": 200,
+  "koers": 592.2,
+  "valuta": "EUR",
+  "bron": "BaFin (Duitsland)",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "TTE-2026-11-02-amf-D1148219-v",
   "ticker": "TTE",
   "naam": "TotalEnergies",
