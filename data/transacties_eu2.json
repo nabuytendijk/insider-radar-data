@@ -1,5 +1,21 @@
 [
  {
+  "id": "NESN-2026-11-16-six-T1QBG00086",
+  "ticker": "NESN",
+  "naam": "Nestlé",
+  "status": "Watchlist",
+  "datum": "2026-11-16",
+  "persoon": "Niet gepubliceerd (SIX noemt geen naam)",
+  "rol": "Bestuurslid (raad van bestuur)",
+  "type": "verkoop",
+  "aantal": 40000,
+  "koers": 87.5,
+  "valuta": "CHF",
+  "bron": "SIX Exchange Regulation",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "MUV2-2026-11-13-bf-Andrew-10-k-171120261602",
   "ticker": "MUV2",
   "naam": "Munich Re",
