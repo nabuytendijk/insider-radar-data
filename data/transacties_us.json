@@ -1,5 +1,37 @@
 [
  {
+  "id": "AAPL-2026-11-17-000114036126044952-0",
+  "ticker": "AAPL",
+  "naam": "Apple",
+  "status": "Watchlist",
+  "datum": "2026-11-17",
+  "persoon": "Newstead Jennifer",
+  "rol": "SVP, GC and Government Affairs",
+  "type": "verkoop",
+  "aantal": 2398,
+  "koers": 352.77,
+  "valuta": "USD",
+  "bron": "SEC EDGAR Form 4",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
+  "id": "AMD-2026-11-17-000000248826000215-0",
+  "ticker": "AMD",
+  "naam": "AMD",
+  "status": "Watchlist",
+  "datum": "2026-11-17",
+  "persoon": "Hahn Ava",
+  "rol": "SVP, GC & Corporate Secretary",
+  "type": "verkoop",
+  "aantal": 34,
+  "koers": 511.0,
+  "valuta": "USD",
+  "bron": "SEC EDGAR Form 4",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "AMZN-2026-11-16-000193600626000030-1",
   "ticker": "AMZN",
   "naam": "Amazon",
