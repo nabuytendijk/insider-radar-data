@@ -1,5 +1,21 @@
 [
  {
+  "id": "AMZN-2026-11-18-000101872426000056-0",
+  "ticker": "AMZN",
+  "naam": "Amazon",
+  "status": "Watchlist",
+  "datum": "2026-11-18",
+  "persoon": "Huttenlocher Daniel P",
+  "rol": "Bestuurder / commissaris",
+  "type": "verkoop",
+  "aantal": 783,
+  "koers": 259.63,
+  "valuta": "USD",
+  "bron": "SEC EDGAR Form 4",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "AAPL-2026-11-17-000114036126044952-0",
   "ticker": "AAPL",
   "naam": "Apple",
