@@ -1,5 +1,21 @@
 [
  {
+  "id": "SU-2026-11-17-amf-D1151804-k",
+  "ticker": "SU",
+  "naam": "Schneider Electric",
+  "status": "Watchlist",
+  "datum": "2026-11-17",
+  "persoon": "François Jackow",
+  "rol": "Administrateur",
+  "type": "koop",
+  "aantal": 750,
+  "koers": 240.1254,
+  "valuta": "EUR",
+  "bron": "AMF (Frankrijk)",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "NESN-2026-11-16-six-T1QBG00086",
   "ticker": "NESN",
   "naam": "Nestlé",
