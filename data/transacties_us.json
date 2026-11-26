@@ -16,6 +16,22 @@
   "toelichting": ""
  },
  {
+  "id": "AAPL-2026-11-24-000114036126045775-0",
+  "ticker": "AAPL",
+  "naam": "Apple",
+  "status": "Watchlist",
+  "datum": "2026-11-24",
+  "persoon": "Newstead Jennifer",
+  "rol": "SVP, GC and Government Affairs",
+  "type": "verkoop",
+  "aantal": 2398,
+  "koers": 347.56,
+  "valuta": "USD",
+  "bron": "SEC EDGAR Form 4",
+  "controle": "nee",
+  "toelichting": ""
+ },
+ {
   "id": "AMZN-2026-11-23-000137454526000012-1",
   "ticker": "AMZN",
   "naam": "Amazon",
