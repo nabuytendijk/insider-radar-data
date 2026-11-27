@@ -1,5 +1,21 @@
 [
  {
+  "id": "BN-2026-11-20-amf-D1152633-v",
+  "ticker": "BN",
+  "naam": "Danone",
+  "status": "Watchlist",
+  "datum": "2026-11-20",
+  "persoon": "Juergen Esser",
+  "rol": "DGA Groupe, en charge des fonctions Finances, Technologie et Data",
+  "type": "verkoop",
+  "aantal": 4746,
+  "koers": 68.8964,
+  "valuta": "EUR",
+  "bron": "AMF (Frankrijk)",
+  "controle": "nee",
+  "toelichting": "verband met aandelenoptieprogramma"
+ },
+ {
   "id": "SU-2026-11-17-amf-D1151804-k",
   "ticker": "SU",
   "naam": "Schneider Electric",
